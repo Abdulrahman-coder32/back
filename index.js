@@ -74,7 +74,7 @@ io.use((socket, next) => {
   }
 });
 
-// ====================== SOCKET LOGIC ======================
+// ====================== SOCKET CONNECTION ======================
 io.on('connection', (socket) => {
   console.log('✅ مستخدم متصل:', socket.user?.id);
 
@@ -86,6 +86,7 @@ io.on('connection', (socket) => {
     socket.join(applicationId);
   });
 
+  // ====================== SEND MESSAGE (FIXED) ======================
   socket.on('sendMessage', async ({ application_id, message }) => {
     if (!message?.trim() || !application_id) return;
 
@@ -103,7 +104,46 @@ io.on('connection', (socket) => {
       const populatedMessage = await Message.findById(newMessage._id)
         .populate('sender_id', 'name profileImage cacheBuster');
 
+      // 1. إرسال الرسالة للشات
       io.to(application_id).emit('newMessage', populatedMessage);
+
+      // 2. جلب بيانات الـ application
+      const appData = await Application.findById(application_id)
+        .populate('job_id', 'owner_id')
+        .populate('seeker_id', 'name');
+
+      if (!appData) return;
+
+      // 3. تحديد المستلم
+      const recipientId =
+        socket.user.id === appData.job_id.owner_id.toString()
+          ? appData.seeker_id._id.toString()
+          : appData.job_id.owner_id.toString();
+
+      // 4. إنشاء إشعار
+      const notification = new Notification({
+        user_id: recipientId,
+        type: 'new_message',
+        message: `رسالة جديدة من ${populatedMessage.sender_id.name}`,
+        application_id,
+        read: false,
+        createdAt: new Date()
+      });
+
+      await notification.save();
+
+      // 5. إرسال Real-time Events
+      io.to(recipientId).emit('newNotification', notification);
+
+      io.to(recipientId).emit('unreadUpdate', {
+        application_id,
+        unreadCount: 1
+      });
+
+      io.to(recipientId).emit('chatListUpdate', {
+        application_id,
+        lastMessage: message.trim()
+      });
 
     } catch (err) {
       console.error('❌ Socket Error:', err);
