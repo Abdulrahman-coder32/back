@@ -1,3 +1,7 @@
+// ====================== POLYFILL للـ crypto ======================
+const crypto = require('crypto');
+global.crypto = crypto; // مهم جداً لـ Hostinger
+
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -13,29 +17,39 @@ const Notification = require('./models/Notification');
 
 dotenv.config();
 
+if (!process.env.MONGO_URI) {
+  console.error("❌ MONGO_URI مش موجود!");
+  process.exit(1);
+}
+
 const app = express();
 const server = http.createServer(app);
 
 const io = socketIo(server, {
-  cors: {
-    origin: process.env.CLIENT_URL || "*",
-    methods: ["GET", "POST"],
-    credentials: true
+  cors: { 
+    origin: process.env.CLIENT_URL || "*", 
+    credentials: true 
   }
 });
 
 app.set('io', io);
 
+// Middlewares
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cors({
-  origin: process.env.CLIENT_URL || "*",
+  origin: process.env.CLIENT_URL,
   credentials: true
 }));
 
-app.use(express.json());
+app.use((req, res, next) => {
+  console.log(`📌 ${req.method} ${req.url}`);
+  next();
+});
 
-// ======================
-// API Routes
-// ======================
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/jobs', require('./routes/jobs'));
 app.use('/api/applications', require('./routes/applications'));
@@ -43,16 +57,13 @@ app.use('/api/messages', require('./routes/messages'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/notifications', require('./routes/notifications'));
 
-app.get('/api/test', (req, res) => {
-  res.json({ message: 'Backend شغال تمام مع Socket.IO!' });
-});
+app.get('/api/test', (req, res) => res.json({ message: '✅ Backend شغال' }));
 
-// ======================
-// Socket.IO Logic
-// ======================
+// ====================== SOCKET.IO SETUP ======================
 io.use((socket, next) => {
-  const token = socket.handshake.auth.token;
+  const token = socket.handshake.auth?.token;
   if (!token) return next(new Error('لا يوجد توكن'));
+
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     socket.user = { id: decoded.id, role: decoded.role };
@@ -63,119 +74,72 @@ io.use((socket, next) => {
 });
 
 io.on('connection', (socket) => {
-  console.log('مستخدم متصل بالسوكت:', socket.user?.id, 'دور:', socket.user?.role);
-  
+  console.log('✅ مستخدم متصل:', socket.user?.id);
+
   if (socket.user?.id) {
     socket.join(socket.user.id.toString());
   }
 
+  // الانضمام لشات معين
   socket.on('joinChat', (applicationId) => {
     socket.join(applicationId);
-    console.log(`المستخدم ${socket.user?.id} انضم للمحادثة: ${applicationId}`);
+    console.log(`👥 User ${socket.user.id} joined chat: ${applicationId}`);
   });
 
+  // إرسال رسالة عبر Socket (أهم تعديل)
   socket.on('sendMessage', async ({ application_id, message }) => {
-    if (!message.trim()) return;
+    if (!message?.trim() || !application_id) return;
+
     try {
       const newMessage = new Message({
         application_id,
         sender_id: socket.user.id,
+        type: 'text',
         message: message.trim(),
         timestamp: new Date()
       });
+
       await newMessage.save();
 
       const populatedMessage = await Message.findById(newMessage._id)
-        .populate('sender_id', 'name');
+        .populate('sender_id', 'name profileImage cacheBuster');
 
+      // إرسال الرسالة لكل الموجودين في الروم
       io.to(application_id).emit('newMessage', populatedMessage);
 
-      const app = await Application.findById(application_id)
-        .populate('job_id', 'owner_id')
-        .populate('seeker_id', 'name');
+      console.log(`📨 Message sent in chat ${application_id}`);
+      
+      // هنا يمكن استدعاء دالة handleNewMessage من routes/messages.js لو حابب نعمل refactor كبير
+      // لكن حالياً بنعمل emit أساسي
 
-      if (app) {
-        const recipientId = socket.user.id === app.job_id.owner_id.toString()
-          ? app.seeker_id._id.toString()
-          : app.job_id.owner_id.toString();
-
-        await Application.findByIdAndUpdate(application_id, {
-          lastMessage: message.trim(),
-          lastTimestamp: new Date(),
-          $inc: { unreadCount: 1 }
-        });
-
-        io.to(recipientId).emit('unreadUpdate', {
-          application_id,
-          unreadCount: (app.unreadCount || 0) + 1
-        });
-
-        const notificationData = {
-          type: 'new_message',
-          message: `لديك رسالة جديدة من ${populatedMessage.sender_id.name}`,
-          application_id,
-          read: false,
-          createdAt: new Date()
-        };
-
-        io.to(recipientId).emit('newNotification', notificationData);
-
-        const newNotif = new Notification({
-          user_id: recipientId,
-          ...notificationData
-        });
-        await newNotif.save();
-
-        io.to(recipientId).emit('newMessageNotification', {
-          type: 'new_message',
-          application_id,
-          message: 'لديك رسالة جديدة',
-          from: populatedMessage.sender_id.name
-        });
-      }
     } catch (err) {
-      console.error('خطأ في حفظ أو إرسال الرسالة:', err);
+      console.error('❌ Socket sendMessage Error:', err);
+      socket.emit('messageError', { msg: 'فشل في إرسال الرسالة' });
     }
   });
 
   socket.on('disconnect', () => {
-    console.log('مستخدم انفصل عن السوكت:', socket.user?.id);
+    console.log('❌ مستخدم انفصل:', socket.user?.id);
   });
 });
 
-// ======================
-// خدمة Angular Frontend (Express 5)
-// ======================
-app.use(express.static(path.join(__dirname, 'fadahrak-frontend/dist/fadahrak-frontend')));
+// ====================== START SERVER ======================
+const startServer = async () => {
+  try {
+    console.log("🔗 Connecting to MongoDB...");
+    await mongoose.connect(process.env.MONGO_URI, {
+      serverSelectionTimeoutMS: 15000,
+    });
+    console.log('✅ MongoDB connected successfully');
 
-// Catch-all Route - النسخة الصحيحة لـ Express 5
-app.get('/{*splat}', (req, res) => {
-  res.sendFile(path.join(__dirname, 'fadahrak-frontend/dist/fadahrak-frontend/index.html'));
-});
-
-// ======================
-// MongoDB Connection
-// ======================
-const connectWithRetry = () => {
-  console.log('جاري محاولة الاتصال بـ MongoDB Atlas...');
- 
-  mongoose.connect(process.env.MONGO_URI, {
-    serverSelectionTimeoutMS: 30000,
-    socketTimeoutMS: 45000,
-  })
-  .then(() => {
-    console.log('✅ تم الاتصال بـ MongoDB Atlas بنجاح');
-   
     const PORT = process.env.PORT || 5000;
     server.listen(PORT, () => {
-      console.log(`🚀 السيرفر شغال على البورت ${PORT}`);
+      console.log(`🚀 Server running on port ${PORT}`);
     });
-  })
-  .catch(err => {
-    console.error('❌ فشل الاتصال بقاعدة البيانات:', err.message);
-    console.log('إعادة المحاولة بعد 5 ثواني...');
-    setTimeout(connectWithRetry, 5000);
-  });
+  } catch (err) {
+    console.error('❌ MongoDB Error:', err.message);
+    process.exit(1);
+  }
 };
 
-connectWithRetry();
+startServer();
