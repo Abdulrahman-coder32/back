@@ -21,9 +21,10 @@ if (!process.env.MONGO_URI) {
 const app = express();
 const server = http.createServer(app);
 
+// ====================== SOCKET ======================
 const io = socketIo(server, {
   cors: {
-    origin: "*",
+    origin: process.env.CLIENT_URL || true,
     methods: ["GET", "POST"],
     credentials: true
   }
@@ -36,7 +37,7 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 app.use(cors({
-  origin: "*",
+  origin: process.env.CLIENT_URL || true,
   credentials: true
 }));
 
@@ -59,7 +60,7 @@ app.get('/api/test', (req, res) => {
   res.json({ message: '✅ Backend شغال' });
 });
 
-// ====================== SOCKET ======================
+// ====================== SOCKET AUTH ======================
 io.use((socket, next) => {
   const token = socket.handshake.auth?.token;
   if (!token) return next(new Error('لا يوجد توكن'));
@@ -73,6 +74,7 @@ io.use((socket, next) => {
   }
 });
 
+// ====================== SOCKET LOGIC ======================
 io.on('connection', (socket) => {
   console.log('✅ مستخدم متصل:', socket.user?.id);
 
@@ -105,6 +107,7 @@ io.on('connection', (socket) => {
 
     } catch (err) {
       console.error('❌ Socket Error:', err);
+      socket.emit('messageError', { msg: 'فشل في إرسال الرسالة' });
     }
   });
 
