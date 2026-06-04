@@ -3,7 +3,7 @@ const router = express.Router();
 const auth = require('../middleware/auth');
 const Notification = require('../models/Notification');
 
-// جلب كل الإشعارات للمستخدم الحالي
+// ====================== GET ALL NOTIFICATIONS ======================
 router.get('/', auth, async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
@@ -28,28 +28,30 @@ router.get('/', auth, async (req, res) => {
         hasPrev: page > 1
       }
     });
+
   } catch (err) {
     console.error('خطأ في جلب الإشعارات:', err);
     res.status(500).json({ msg: 'خطأ في السيرفر أثناء جلب الإشعارات' });
   }
 });
 
-// جلب عدد الإشعارات الغير مقروءة
+// ====================== UNREAD COUNT ======================
 router.get('/unread-count', auth, async (req, res) => {
   try {
     const count = await Notification.countDocuments({
       user_id: req.user.id,
       read: false
     });
-    
+
     res.json({ count });
+
   } catch (err) {
     console.error('خطأ في حساب عدد الإشعارات الغير مقروءة:', err);
     res.status(500).json({ msg: 'خطأ في السيرفر' });
   }
 });
 
-// وضع علامة قراءة على كل الإشعارات
+// ====================== MARK ALL AS READ ======================
 router.patch('/mark-all-read', auth, async (req, res) => {
   try {
     const result = await Notification.updateMany(
@@ -61,19 +63,20 @@ router.patch('/mark-all-read', auth, async (req, res) => {
       success: true,
       modifiedCount: result.modifiedCount
     });
+
   } catch (err) {
     console.error('خطأ في وضع علامة قراءة:', err);
     res.status(500).json({ msg: 'خطأ في السيرفر أثناء تحديث حالة القراءة' });
   }
 });
 
-// (اختياري) وضع علامة قراءة على إشعار واحد معين
+// ====================== MARK SINGLE NOTIFICATION ======================
 router.patch('/:id/read', auth, async (req, res) => {
   try {
     const notification = await Notification.findOneAndUpdate(
-      { 
+      {
         _id: req.params.id,
-        user_id: req.user.id 
+        user_id: req.user.id
       },
       { read: true },
       { new: true }
@@ -84,13 +87,14 @@ router.patch('/:id/read', auth, async (req, res) => {
     }
 
     res.json(notification);
+
   } catch (err) {
     console.error('خطأ في تحديث حالة إشعار واحد:', err);
     res.status(500).json({ msg: 'خطأ في السيرفر' });
   }
 });
 
-// ← جديد: وضع علامة قراءة على كل إشعارات الشات المحدد (عشان لما نفتح الشات الإشعار ما يرجعش بعد ريفريش)
+// ====================== MARK CHAT NOTIFICATIONS AS READ ======================
 router.patch('/mark-chat-read/:applicationId', auth, async (req, res) => {
   try {
     const result = await Notification.updateMany(
@@ -107,6 +111,7 @@ router.patch('/mark-chat-read/:applicationId', auth, async (req, res) => {
       modifiedCount: result.modifiedCount,
       message: 'تم تحديث إشعارات الشات بنجاح'
     });
+
   } catch (err) {
     console.error('خطأ في تحديث إشعارات الشات:', err);
     res.status(500).json({ msg: 'خطأ في السيرفر' });
