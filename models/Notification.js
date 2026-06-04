@@ -1,35 +1,38 @@
-// models/Notification.js
 const mongoose = require('mongoose');
 
 const NotificationSchema = new mongoose.Schema({
   user_id: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true
+    required: true,
+    index: true
   },
+
   type: {
     type: String,
-    required: true
+    required: true,
+    index: true
   },
+
   message: {
     type: String,
     required: true
   },
+
   application_id: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Application'
+    ref: 'Application',
+    index: true
   },
+
   read: {
     type: Boolean,
-    default: false
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now
+    default: false,
+    index: true
   }
+}, {
+  timestamps: true
 });
 
-// الجزء ده هو اللي بيحل المشكلة
-const Notification = mongoose.model('Notification', NotificationSchema);
-
-module.exports = Notification;   // ← لازم يكون كده، مش NotificationSchema ولا أي حاجة تانية
+// Export model
+module.exports = mongoose.model('Notification', NotificationSchema);
