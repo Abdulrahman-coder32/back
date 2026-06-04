@@ -33,7 +33,9 @@ app.use(cors({
 
 app.use(express.json());
 
+// ======================
 // API Routes
+// ======================
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/jobs', require('./routes/jobs'));
 app.use('/api/applications', require('./routes/applications'));
@@ -41,11 +43,17 @@ app.use('/api/messages', require('./routes/messages'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/notifications', require('./routes/notifications'));
 
-// Socket.IO Logic (محافظ عليه كامل زي ما هو)
+// Test Route (نقلته قبل الـ catch-all)
+app.get('/api/test', (req, res) => {
+  res.json({ message: 'Backend شغال تمام مع Socket.IO!' });
+});
+
+// ======================
+// Socket.IO Logic
+// ======================
 io.use((socket, next) => {
   const token = socket.handshake.auth.token;
   if (!token) return next(new Error('لا يوجد توكن'));
-
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     socket.user = { id: decoded.id, role: decoded.role };
@@ -57,7 +65,7 @@ io.use((socket, next) => {
 
 io.on('connection', (socket) => {
   console.log('مستخدم متصل بالسوكت:', socket.user?.id, 'دور:', socket.user?.role);
-
+  
   if (socket.user?.id) {
     socket.join(socket.user.id.toString());
   }
@@ -69,7 +77,6 @@ io.on('connection', (socket) => {
 
   socket.on('sendMessage', async ({ application_id, message }) => {
     if (!message.trim()) return;
-
     try {
       const newMessage = new Message({
         application_id,
@@ -137,33 +144,29 @@ io.on('connection', (socket) => {
   });
 });
 
-// ────────────────────────────────────────
+// ======================
 // خدمة Angular Frontend
-// ────────────────────────────────────────
+// ======================
 app.use(express.static(path.join(__dirname, 'fadahrak-frontend/dist/fadahrak-frontend')));
 
-app.get('/*', (req, res) => {
+// Catch-all Route (التصليح المهم)
+app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'fadahrak-frontend/dist/fadahrak-frontend/index.html'));
 });
 
-// Test route
-app.get('/api/test', (req, res) => {
-  res.json({ message: 'Backend شغال تمام مع Socket.IO!' });
-});
-
-// ────────────────────────────────────────
-// اتصال MongoDB مع Retry Logic (التعديل الجديد)
-// ────────────────────────────────────────
+// ======================
+// MongoDB Connection with Retry
+// ======================
 const connectWithRetry = () => {
   console.log('جاري محاولة الاتصال بـ MongoDB Atlas...');
-  
+ 
   mongoose.connect(process.env.MONGO_URI, {
-    serverSelectionTimeoutMS: 30000, // 30 ثانية قبل timeout
+    serverSelectionTimeoutMS: 30000,
     socketTimeoutMS: 45000,
   })
   .then(() => {
     console.log('✅ تم الاتصال بـ MongoDB Atlas بنجاح');
-    
+   
     const PORT = process.env.PORT || 5000;
     server.listen(PORT, () => {
       console.log(`🚀 السيرفر شغال على البورت ${PORT}`);
@@ -172,9 +175,8 @@ const connectWithRetry = () => {
   .catch(err => {
     console.error('❌ فشل الاتصال بقاعدة البيانات:', err.message);
     console.log('إعادة المحاولة بعد 5 ثواني...');
-    setTimeout(connectWithRetry, 5000); // إعادة محاولة كل 5 ثواني
+    setTimeout(connectWithRetry, 5000);
   });
 };
 
-// بدء عملية الاتصال
 connectWithRetry();
