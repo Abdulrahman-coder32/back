@@ -144,12 +144,12 @@ io.on('connection', (socket) => {
 });
 
 // ======================
-// خدمة Angular Frontend (Express 5 Compatible)
+// خدمة Angular Frontend (Express 5)
 // ======================
 app.use(express.static(path.join(__dirname, 'fadahrak-frontend/dist/fadahrak-frontend')));
 
-// Catch-all Route - الحل الجديد
-app.get('/*', (req, res) => {
+// Catch-all Route - النسخة الصحيحة لـ Express 5
+app.get('/{*splat}', (req, res) => {
   res.sendFile(path.join(__dirname, 'fadahrak-frontend/dist/fadahrak-frontend/index.html'));
 });
 
