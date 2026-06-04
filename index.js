@@ -43,7 +43,6 @@ app.use('/api/messages', require('./routes/messages'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/notifications', require('./routes/notifications'));
 
-// Test Route (نقلته قبل الـ catch-all)
 app.get('/api/test', (req, res) => {
   res.json({ message: 'Backend شغال تمام مع Socket.IO!' });
 });
@@ -145,17 +144,17 @@ io.on('connection', (socket) => {
 });
 
 // ======================
-// خدمة Angular Frontend
+// خدمة Angular Frontend (Express 5 Compatible)
 // ======================
 app.use(express.static(path.join(__dirname, 'fadahrak-frontend/dist/fadahrak-frontend')));
 
-// Catch-all Route (التصليح المهم)
-app.get('*', (req, res) => {
+// Catch-all Route - الحل الجديد
+app.get('/*', (req, res) => {
   res.sendFile(path.join(__dirname, 'fadahrak-frontend/dist/fadahrak-frontend/index.html'));
 });
 
 // ======================
-// MongoDB Connection with Retry
+// MongoDB Connection
 // ======================
 const connectWithRetry = () => {
   console.log('جاري محاولة الاتصال بـ MongoDB Atlas...');
