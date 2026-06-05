@@ -19,7 +19,7 @@ const server = http.createServer(app);
 // ================= SOCKET =================
 const io = socketIo(server, {
   cors: {
-    origin: process.env.CLIENT_URL || true,
+    origin: 'https://sahlawork.org',
     methods: ["GET", "POST"],
     credentials: true
   }
@@ -29,7 +29,7 @@ app.set('io', io);
 
 // ================= MIDDLEWARE =================
 app.use(express.json());
-app.use(cors({ origin: process.env.CLIENT_URL || true }));
+app.use(cors({ origin: 'https://sahlawork.org' }));
 
 // ================= ROOT ROUTE =================
 app.get('/', (req, res) => {
