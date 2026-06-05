@@ -31,6 +31,11 @@ app.set('io', io);
 app.use(express.json());
 app.use(cors({ origin: process.env.CLIENT_URL || true }));
 
+// ================= ROOT ROUTE =================
+app.get('/', (req, res) => {
+  res.send('✅ API is running');
+});
+
 // ================= ROUTES =================
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/jobs', require('./routes/jobs'));
@@ -71,7 +76,6 @@ io.on('connection', (socket) => {
     if (!message?.trim() || !application_id) return;
 
     try {
-      // 1. Save message
       const newMessage = await Message.create({
         application_id,
         sender_id: socket.user.id,
@@ -83,10 +87,8 @@ io.on('connection', (socket) => {
       const populatedMessage = await Message.findById(newMessage._id)
         .populate('sender_id', 'name profileImage cacheBuster');
 
-      // 2. broadcast message to chat room
       io.to(application_id).emit('newMessage', populatedMessage);
 
-      // 3. get application
       const appData = await Application.findById(application_id)
         .populate('job_id', 'owner_id')
         .populate('seeker_id', 'name');
@@ -99,7 +101,6 @@ io.on('connection', (socket) => {
       const recipientId =
         socket.user.id === ownerId ? seekerId : ownerId;
 
-      // 4. create notification
       const notification = await Notification.create({
         user_id: recipientId,
         type: 'new_message',
@@ -109,20 +110,13 @@ io.on('connection', (socket) => {
         createdAt: new Date()
       });
 
-      // 5. count unread notifications (REAL FIX)
       const unreadCount = await Notification.countDocuments({
         user_id: recipientId,
         read: false
       });
 
-      // 6. emit real-time updates
       io.to(recipientId).emit('newNotification', notification);
-
-      io.to(recipientId).emit('unreadUpdate', {
-        application_id,
-        unreadCount
-      });
-
+      io.to(recipientId).emit('unreadUpdate', { application_id, unreadCount });
       io.to(recipientId).emit('chatListUpdate', {
         application_id,
         lastMessage: message.trim(),
